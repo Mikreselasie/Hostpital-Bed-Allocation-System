@@ -1,30 +1,20 @@
 const WARDS = ['ICU', 'Cardiology', 'General', 'Pediatrics'];
+const { db, getAllBeds: getAllBedsFromDB, updateBed, insertBed, deleteBed } = require('../db');
 
 /**
- * Generates 50 mock beds and stores them in the global HashMap.
+ * Loads all beds from SQLite database into the global HashMap.
  */
 function initializeBeds() {
-    console.log("Initializing 50 beds...");
+    console.log("Loading beds from database...");
     global.beds.clear();
 
-    for (let i = 1; i <= 50; i++) {
-        const bedId = `BED-${i}`;
-        const ward = WARDS[Math.floor(Math.random() * WARDS.length)];
+    const bedsFromDB = getAllBedsFromDB();
 
-        // Distance 1-100 meters from nursing station
-        const distance = Math.floor(Math.random() * 100) + 1;
-
-        const bed = {
-            id: bedId,
-            ward: ward,
-            status: 'Available', // Available, Occupied, Cleaning
-            distanceFromStation: distance,
-            type: ward === 'ICU' ? 'Critical' : 'Standard'
-        };
-
-        // O(1) Insert
-        global.beds.set(bedId, bed);
+    for (const bed of bedsFromDB) {
+        global.beds.set(bed.id, bed);
     }
+
+    console.log(`Loaded ${bedsFromDB.length} beds from database`);
 }
 
 /**
@@ -39,6 +29,9 @@ function updateBedStatus(bedId, newStatus) {
     const bed = global.beds.get(bedId);
     bed.status = newStatus;
 
+    // Persist to database
+    updateBed(bedId, { status: newStatus, patientData: bed.patient });
+
     // Core Requirement: WebSocket Update
     if (global.io) {
         global.io.emit('bedUpdate', bed);
@@ -49,6 +42,8 @@ function updateBedStatus(bedId, newStatus) {
 
 /**
  * Helper to get all beds as array for API response, optionally filtered.
+ * Logic: If statusFilter is null, returns all beds from the Hash Table.
+ * If statusFilter is provided, return only matching beds.
  */
 function getAllBeds(statusFilter = null) {
     const allBeds = Array.from(global.beds.values());
@@ -82,6 +77,10 @@ function transferPatient(sourceBedId, targetBedId) {
     sourceBed.status = 'Cleaning';
     sourceBed.patient = null;
 
+    // Persist to database
+    updateBed(targetBedId, { status: 'Occupied', patientData: targetBed.patient });
+    updateBed(sourceBedId, { status: 'Cleaning', patientData: null });
+
     // Real-time Updates
     if (global.io) {
         global.io.emit('bedUpdate', sourceBed);
@@ -101,6 +100,9 @@ function dischargePatient(bedId) {
     bed.status = 'Cleaning';
     bed.patient = null;
 
+    // Persist to database
+    updateBed(bedId, { status: 'Cleaning', patientData: null });
+
     if (global.io) global.io.emit('bedUpdate', bed);
     return bed;
 }
@@ -115,6 +117,9 @@ function assignBedManual(bedId, patient) {
 
     bed.status = 'Occupied';
     bed.patient = patient; // Store full patient object
+
+    // Persist to database
+    updateBed(bedId, { status: 'Occupied', patientData: patient });
 
     if (global.io) global.io.emit('bedUpdate', bed);
     return bed;
@@ -165,28 +170,17 @@ function assignBedGreedy(patientProfile) {
     bestBed.status = 'Occupied';
     bestBed.patient = patient; // Store patient data
 
+    // Persist to database
+    updateBed(bestBed.id, { status: 'Occupied', patientData: patient });
+
     if (global.io) global.io.emit('bedUpdate', bestBed);
     return bestBed;
 }
 
-module.exports = {
-    initializeBeds,
-    updateBedStatus,
-    getAllBeds,
-    assignBedGreedy,
-    transferPatient,
-    dischargePatient,
-    assignBedManual,
-    addBed,
-    removeBed
-};
-
 /**
  * Adds a new bed to a specific ward.
- * Generates a unique ID based on current timestamp/random to avoid collision.
  */
 function addBed(ward) {
-    // Simple ID generation strategy
     let idNum = global.beds.size + 1;
     let bedId = `BED-${idNum}`;
     while (global.beds.has(bedId)) {
@@ -204,15 +198,17 @@ function addBed(ward) {
 
     global.beds.set(bedId, bed);
 
+    // Persist to database
+    insertBed(bed);
+
     if (global.io) {
-        global.io.emit('bedUpdate', bed); // Emit update (or could emit bedAdded)
+        global.io.emit('bedUpdate', bed);
     }
     return bed;
 }
 
 /**
  * Removes a bed from the system.
- * Only allows removal if bed is not Occupied.
  */
 function removeBed(bedId) {
     const bed = global.beds.get(bedId);
@@ -224,11 +220,23 @@ function removeBed(bedId) {
 
     global.beds.delete(bedId);
 
-    // For deletion, we might need a specific event or just rely on full fetch, 
-    // but sending a bedUpdate with null or a special flag might be cleaner.
-    // simpler: clients often refetch or we can emit a separate 'bedRemoved' event.
+    // Persist to database
+    deleteBed(bedId);
+
     if (global.io) {
         global.io.emit('bedRemoved', bedId);
     }
     return true;
 }
+
+module.exports = {
+    initializeBeds,
+    updateBedStatus,
+    getAllBeds,
+    assignBedGreedy,
+    transferPatient,
+    dischargePatient,
+    assignBedManual,
+    addBed,
+    removeBed
+};

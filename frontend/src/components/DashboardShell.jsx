@@ -33,7 +33,6 @@ export default function DashboardShell({ children, currentView, onViewChange }) 
                         active={currentView === 'directory'}
                         onClick={() => onViewChange && onViewChange('directory')}
                     />
-                    <NavItem icon={<Sparkles size={20} />} label="Housekeeping" />
                 </nav>
 
                 <div className="p-4 border-t border-slate-100">

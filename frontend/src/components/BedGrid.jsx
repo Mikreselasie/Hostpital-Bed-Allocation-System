@@ -179,8 +179,14 @@ export default function BedGrid({ beds, queue, onBedClick, onAssign }) {
                                 {activeBed.status === 'Occupied' && (
                                     <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
                                         <label className="text-xs text-blue-400 font-bold uppercase">Patient</label>
-                                        <p className="text-lg font-bold text-blue-900">John Doe</p>
-                                        <p className="text-xs text-blue-600">Admitted: 2 hours ago</p>
+                                        <p className="text-lg font-bold text-blue-900">
+                                            {activeBed.patient ? activeBed.patient.name : 'Unknown'}
+                                        </p>
+                                        <p className="text-xs text-blue-600">
+                                            {activeBed.patient && activeBed.patient.joinedAt
+                                                ? `Joined Queue: ${new Date(activeBed.patient.joinedAt).toLocaleTimeString()}`
+                                                : 'No admission time'}
+                                        </p>
                                     </div>
                                 )}
                             </div>
@@ -235,6 +241,12 @@ export default function BedGrid({ beds, queue, onBedClick, onAssign }) {
 }
 
 function BedCard({ bed, onClick }) {
+    // Small helper for initials
+    const getInitials = (name) => {
+        if (!name) return '??';
+        return name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
+    };
+
     return (
         <motion.div
             layout
@@ -256,7 +268,9 @@ function BedCard({ bed, onClick }) {
                 <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">{bed.ward}</p>
                 <div className="mt-1 h-6">
                     {bed.status === 'Occupied' ? (
-                        <span className="font-bold text-slate-800">JD</span>
+                        <span className="font-bold text-slate-800">
+                            {bed.patient ? getInitials(bed.patient.name) : '??'}
+                        </span>
                     ) : (
                         <span className="text-xs text-slate-300 italic">Empty</span>
                     )}
